@@ -3,7 +3,6 @@
 #define CATA_SRC_BASECAMP_H
 
 #include <cstddef>
-#include <iosfwd>
 #include <list>
 #include <map>
 #include <memory>
@@ -14,13 +13,14 @@
 
 #include "coordinates.h"
 #include "craft_command.h"
+#include "game_constants.h"
 #include "game_inventory.h"
 #include "inventory.h"
-#include "memory_fast.h"
+#include "map.h"
 #include "mission_companion.h"
 #include "point.h"
 #include "requirements.h"
-#include "translations.h"
+#include "stomach.h"
 #include "type_id.h"
 
 class JsonObject;
@@ -31,9 +31,7 @@ class time_duration;
 class zone_data;
 enum class farm_ops : int;
 class item;
-class mission_data;
 class recipe;
-class tinymap;
 
 const int work_day_hours = 10;
 const int work_day_rest_hours = 8;
@@ -230,6 +228,14 @@ class basecamp
         // food utility
         /// Takes all the food from the camp_food zone and increases the faction
         /// food_supply
+        /// Changes the faction food supply by @ref change, returns the amount of kcal+vitamins consumed, a negative
+        /// total food supply hurts morale
+        /// Handles vitamin consumption when only a kcal value is supplied
+        nutrients camp_food_supply( nutrients &change );
+        /// LEGACY FUNCTION. Constructs a new nutrients struct in place and forwards it
+        nutrients camp_food_supply( int change = 0 );
+        /// LEGACY FUNCTION. Calculates raw kcal cost from duration of work and exercise, then forwards it to above
+        nutrients camp_food_supply( time_duration work, float exertion_level = NO_EXERCISE );
         bool distribute_food();
         std::string name_display_of( const mission_id &miss_id );
         void handle_hide_mission( const point &dir );

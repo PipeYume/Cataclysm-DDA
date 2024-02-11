@@ -2026,10 +2026,8 @@ void outfit::fire_options( Character &guy, std::vector<std::string> &options,
                            std::vector<std::function<void()>> &actions )
 {
     for( item &clothing : worn ) {
-
-        std::vector<item *> guns = guy.cache_get_items_with( "is_gun", &item::is_gun,
-        [&guy]( const item & it ) {
-            return !guy.is_wielding( it );
+        std::vector<item *> guns = clothing.items_with( []( const item & it ) {
+            return it.is_gun();
         } );
 
         if( !guns.empty() && clothing.type->can_use( "holster" ) ) {
@@ -2565,11 +2563,11 @@ const item &outfit::i_at( int position ) const
     }
 }
 
-std::string outfit::get_armor_display( bodypart_id bp, unsigned int truncate ) const
+std::string outfit::get_armor_display( bodypart_id bp ) const
 {
     for( auto it = worn.rbegin(); it != worn.rend(); ++it ) {
         if( it->covers( bp ) ) {
-            return it->tname( 1, true, truncate );
+            return it->tname( 1 );
         }
     }
     return "-";

@@ -20,7 +20,6 @@
 #include "butchery_requirements.h"
 #include "cata_assert.h"
 #include "cata_scope_helpers.h"
-#include "cata_utility.h"
 #include "character_modifier.h"
 #include "city.h"
 #include "climbing.h"
@@ -46,11 +45,11 @@
 #include "flag.h"
 #include "gates.h"
 #include "harvest.h"
+#include "input.h"
 #include "item_action.h"
 #include "item_category.h"
 #include "item_factory.h"
 #include "itype.h"
-#include "json.h"
 #include "json_loader.h"
 #include "loading_ui.h"
 #include "lru_cache.h"
@@ -79,7 +78,6 @@
 #include "overmap.h"
 #include "overmap_connection.h"
 #include "overmap_location.h"
-#include "path_info.h"
 #include "profession.h"
 #include "profession_group.h"
 #include "proficiency.h"
@@ -98,7 +96,6 @@
 #include "speech.h"
 #include "speed_description.h"
 #include "start_location.h"
-#include "string_formatter.h"
 #include "test_data.h"
 #include "text_snippets.h"
 #include "translations.h"
@@ -747,6 +744,7 @@ void DynamicDataLoader::finalize_loaded_data( loading_ui &ui )
             { _( "Crafting recipes" ), &recipe_dictionary::finalize },
             { _( "Recipe groups" ), &recipe_group::check },
             { _( "Martial arts" ), &finalize_martial_arts },
+            { _( "Scenarios" ), &scenario::finalize },
             { _( "Climbing aids" ), &climbing_aid::finalize },
             { _( "NPC classes" ), &npc_class::finalize_all },
             { _( "Missions" ), &mission_type::finalize },
@@ -773,7 +771,9 @@ void DynamicDataLoader::finalize_loaded_data( loading_ui &ui )
         ui.proceed();
     }
 
-    check_consistency( ui );
+    if( !get_option<bool>( "SKIP_VERIFICATION" ) ) {
+        check_consistency( ui );
+    }
     finalized = true;
 }
 
@@ -825,7 +825,6 @@ void DynamicDataLoader::check_consistency( loading_ui &ui )
             { _( "Crafting recipes" ), &recipe_dictionary::check_consistency },
             { _( "Professions" ), &profession::check_definitions },
             { _( "Profession groups" ), &profession_group::check_profession_group_consistency },
-            { _( "Scenarios" ), &scenario::check_definitions },
             { _( "Martial arts" ), &check_martialarts },
             { _( "Climbing aid" ), &climbing_aid::check_consistency },
             { _( "Mutations" ), &mutation_branch::check_consistency },
