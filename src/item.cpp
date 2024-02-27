@@ -1263,6 +1263,7 @@ void item::add_automatic_whitelist()
     std::vector<item_pocket *> pkts = get_all_contained_pockets();
     if( pkts.size() == 1 && contents_only_one_type() ) {
         pkts.front()->settings.whitelist_item( contents.first_item().typeId() );
+        pkts.front()->settings.set_priority( 100 );
     }
 }
 
@@ -1273,6 +1274,7 @@ void item::clear_automatic_whitelist()
         cata::flat_set<itype_id> const &wl = pkts.front()->settings.get_item_whitelist();
         if( !wl.empty() ) {
             pkts.front()->settings.clear_item( *wl.begin() );
+            pkts.front()->settings.set_priority( 0 );
         }
     }
 }
@@ -1295,7 +1297,9 @@ void item::update_modified_pockets()
     // Prevent cleanup of added modular pockets
     for( const item *it : contents.get_added_pockets() ) {
         for( const pocket_data &pocket : it->type->pockets ) {
-            container_pockets.push_back( &pocket );
+            if( pocket.type == pocket_type::CONTAINER ) {
+                container_pockets.push_back( &pocket );
+            }
         }
     }
 
@@ -2408,7 +2412,7 @@ void item::basic_info( std::vector<iteminfo> &info, const iteminfo_query *parts,
     }
     if( parts->test( iteminfo_parts::BASE_CATEGORY ) ) {
         info.emplace_back( "BASE", _( "Category: " ),
-                           "<header>" + get_category_shallow().name() + "</header>" );
+                           "<header>" + get_category_shallow().name_header() + "</header>" );
     }
 
     if( parts->test( iteminfo_parts::DESCRIPTION ) ) {
@@ -2993,20 +2997,33 @@ void item::ammo_info( std::vector<iteminfo> &info, const iteminfo_query *parts, 
                                           medium ).total_damage() );
             const int large_damage = static_cast<int>( ammo.damage.di_considering_length(
                                          large ).total_damage() );
-            if( small_damage != medium_damage || medium_damage != large_damage ) {
-                info.emplace_back( "AMMO", _( "Damage by barrel length: " ) );
+            const int small_dispersion = static_cast<int>( ammo.dispersion_considering_length( small ) );
+            const int medium_dispersion = static_cast<int>( ammo.dispersion_considering_length( medium ) );
+            const int large_dispersion = static_cast<int>( ammo.dispersion_considering_length( large ) );
+            if( small_damage != medium_damage || medium_damage != large_damage ||
+                small_dispersion != medium_dispersion || medium_damage != large_dispersion ) {
+                info.emplace_back( "AMMO", _( "Damage and dispersion by barrel length: " ) );
                 const std::string small_string = string_format( " <info>%d %s</info>: ",
                                                  convert_length( small ),
                                                  length_units( small ) );
-                info.emplace_back( "AMMO", small_string, small_damage );
+                info.emplace_back( "AMMO", small_string, _( " damage:  <num>" ), iteminfo::no_newline,
+                                   small_damage );
+                info.emplace_back( "AMMO", "", _( " dispersion:  <num>" ),
+                                   iteminfo::no_name | iteminfo::lower_is_better, small_dispersion );
                 const std::string medium_string = string_format( " <info>%d %s</info>: ",
                                                   convert_length( medium ),
                                                   length_units( medium ) );
-                info.emplace_back( "AMMO", medium_string, medium_damage );
+                info.emplace_back( "AMMO", medium_string, _( " damage:  <num>" ), iteminfo::no_newline,
+                                   medium_damage );
+                info.emplace_back( "AMMO", "", _( " dispersion:  <num>" ),
+                                   iteminfo::no_name  | iteminfo::lower_is_better, medium_dispersion );
                 const std::string large_string = string_format( " <info>%d %s</info>: ",
                                                  convert_length( large ),
                                                  length_units( large ) );
-                info.emplace_back( "AMMO", large_string, large_damage );
+                info.emplace_back( "AMMO", large_string, _( " damage:  <num>" ), iteminfo::no_newline,
+                                   large_damage );
+                info.emplace_back( "AMMO", "", _( " dispersion:  <num>" ),
+                                   iteminfo::no_name | iteminfo::lower_is_better, large_dispersion );
             }
         }
     }
@@ -3228,7 +3245,7 @@ void item::gun_info( const item *mod, std::vector<iteminfo> &info, const iteminf
                            mod->gun_dispersion( false, false ) );
     }
     if( mod->ammo_required() ) {
-        int ammo_dispersion = curammo->ammo->dispersion;
+        int ammo_dispersion = curammo->ammo->dispersion_considering_length( barrel_length() );
         // ammo_dispersion and sum_of_dispersion don't need to translate.
         if( parts->test( iteminfo_parts::GUN_DISPERSION_LOADEDAMMO ) ) {
             info.emplace_back( "GUN", "ammo_dispersion", "",
@@ -5816,33 +5833,51 @@ void item::final_info( std::vector<iteminfo> &info, const iteminfo_query *parts,
                               "<info>sickly green glow</info>." ) );
     }
 
-    if( type->milling_data ) {
+    if( type->milling_data && !type->milling_data->into_.is_null() ) {
         if( parts->test( iteminfo_parts::DESCRIPTION_MILLEABLE ) ) {
 
             const islot_milling &mdata = *type->milling_data;
-            const int conv_rate = mdata.conversion_rate_;
-            std::string rate_info;
-            if( conv_rate < 1 ) {
-                const int ratio = int( 1 / mdata.conversion_rate_ );
-                rate_info = string_format(
-                                _( "* You need at least <neutral>%i %s</neutral> to produce <neutral>1 %s</neutral>." ), ratio,
-                                type->nname( ratio ),
-                                mdata.into_->nname( 1 ) );
+            const recipe rec = *mdata.recipe_;
+
+            if( rec.is_null() ) {
+                debugmsg( _( "Failed to find milling recipe for %s." ),
+                          this->tname( 1, false ) );
             } else {
-                const int ratio = int( mdata.conversion_rate_ );
-                rate_info = string_format(
-                                _( "* <neutral>1 %s</neutral> can be turned into <neutral>%i %s</neutral>." ),
-                                type->nname( 1 ), ratio,
-                                mdata.into_->nname( ratio ) );
+                const int product_size = rec.makes_amount();
+                const requirement_data::alter_item_comp_vector &components =
+                    rec.simple_requirements().get_components();
+                int lot_size = 0;
+
+                // Making the assumption that milling only uses a single type of input product. Support for mixed products would require additional logic.
+                // We also make the assumption that this is the only relevant input, so if lubricants etc. was to be added more logic would be needed.
+                for( const std::vector<item_comp> &component : components ) {
+                    for( const item_comp &comp : component ) {
+                        if( comp.type == this->typeId() ) {
+                            lot_size = comp.count;
+                            break;
+                        }
+                    }
+
+                    if( lot_size > 0 ) {
+                        break;
+                    }
+                }
+
+                if( lot_size == 0 ) {
+                    debugmsg( _( "Failed to find milling recipe for %s. It can't be milled." ),
+                              this->display_name().c_str() );
+                } else {
+                    std::string rate_info = string_format(
+                                                _( "* <neutral>%d %s</neutral> can be turned into <neutral>%d %s</neutral>." ),
+                                                lot_size,
+                                                type->nname( lot_size ), product_size,
+                                                mdata.into_->nname( product_size ) );
+
+                    info.emplace_back( "DESCRIPTION",
+                                       string_format( _( "* This item can be <info>milled</info>." ) ) );
+                    info.emplace_back( "DESCRIPTION", rate_info );
+                }
             }
-            info.emplace_back( "DESCRIPTION",
-                               string_format( _( "* This item can be <info>milled</info>." ) ) );
-            info.emplace_back( "DESCRIPTION", rate_info );
-            info.emplace_back( "DESCRIPTION",
-                               string_format(
-                                   _( "* It has a conversion rate of <neutral>1 %s</neutral> for <neutral>%.3f %s</neutral>." ),
-                                   type->nname( 1 ),
-                                   mdata.conversion_rate_, mdata.into_->nname( mdata.conversion_rate_ ) ) );
         }
     }
 
@@ -9282,8 +9317,8 @@ std::string item::variant_description() const
 
     // append the description instead of fully overwriting it
     if( itype_variant().append ) {
-        return _( string_format( "%s  %s", type->description.translated(),
-                                 itype_variant().alt_description.translated() ) );
+        return string_format( pgettext( "variant description", "%s  %s" ), type->description.translated(),
+                              itype_variant().alt_description.translated() );
     } else {
         return itype_variant().alt_description.translated();
     }
@@ -10346,7 +10381,7 @@ int item::gun_dispersion( bool with_ammo, bool with_scaling ) const
     dispersion_sum += damage_level() * dispPerDamage;
     dispersion_sum = std::max( dispersion_sum, 0 );
     if( with_ammo && ammo_data() ) {
-        dispersion_sum += ammo_data()->ammo->dispersion;
+        dispersion_sum += ammo_data()->ammo->dispersion_considering_length( barrel_length() );
     }
     if( !with_scaling ) {
         return dispersion_sum;
@@ -10657,7 +10692,7 @@ units::energy item::energy_remaining( const Character *carrier ) const
     if( is_magazine() ) {
         for( const item *e : contents.all_items_top( pocket_type::MAGAZINE ) ) {
             if( e->typeId() == itype_battery ) {
-                ret += units::from_kilojoule( e->charges );
+                ret += units::from_kilojoule( static_cast<std::int64_t>( e->charges ) );
             }
         }
     }
@@ -10802,7 +10837,7 @@ int item::ammo_consume( int qty, const tripoint &pos, Character *carrier )
     // Guns handle energy in energy_consume()
     if( carrier != nullptr && type->tool &&
         ( has_flag( flag_USE_UPS ) || has_flag( flag_USES_BIONIC_POWER ) ) ) {
-        units::energy wanted_energy = units::from_kilojoule( qty );
+        units::energy wanted_energy = units::from_kilojoule( static_cast<std::int64_t>( qty ) );
 
         if( has_flag( flag_USE_UPS ) ) {
             wanted_energy -= carrier->consume_ups( wanted_energy );
@@ -10834,7 +10869,7 @@ units::energy item::energy_consume( units::energy qty, const tripoint &pos, Char
     // Consume battery(ammo) and other fuel (if allowed)
     if( is_battery() || fuel_efficiency >= 0 ) {
         int consumed_kj = contents.ammo_consume( units::to_kilojoule( qty ), pos, fuel_efficiency );
-        qty -= units::from_kilojoule( consumed_kj );
+        qty -= units::from_kilojoule( static_cast<std::int64_t>( consumed_kj ) );
         // fix negative quantity
         if( qty < 0_J ) {
             qty = 0_J;
@@ -10862,7 +10897,7 @@ units::energy item::energy_consume( units::energy qty, const tripoint &pos, Char
     // Should happen only if battery powered and energy per shot is not integer kJ.
     if( qty > 0_kJ && is_battery() ) {
         int consumed_kj = contents.ammo_consume( 1, pos );
-        qty -= units::from_kilojoule( consumed_kj );
+        qty -= units::from_kilojoule( static_cast<std::int64_t>( consumed_kj ) );
     }
 
     return wanted_energy - qty;
@@ -12977,8 +13012,7 @@ bool item::process_fake_mill( map &here, Character * /*carrier*/, const tripoint
         return true; //destroy fake mill
     }
     if( age() >= 6_hours || item_counter == 0 ) {
-        iexamine::mill_finalize( get_avatar(), pos,
-                                 birthday() ); //activate effects when timers goes to zero
+        iexamine::mill_finalize( get_avatar(), pos ); //activate effects when timers goes to zero
         return true; //destroy fake mill item
     }
 
@@ -15075,4 +15109,11 @@ bool is_preferred_component( const item &component )
 bool is_preferred_crafting_component( const item &component )
 {
     return is_preferred_component( component ) && is_crafting_component( component );
+}
+
+disp_mod_by_barrel::disp_mod_by_barrel() = default;
+void disp_mod_by_barrel::deserialize( const JsonObject &jo )
+{
+    mandatory( jo, false, "barrel_length", barrel_length );
+    mandatory( jo, false, "dispersion", dispersion_modifier );
 }

@@ -24,6 +24,7 @@
     - [The `relic_data` field](#the-relic_data-field)
     - [Variables](#variables)
     - [ID values](#id-values)
+	- [Enchantments on monsters](#enchantments-on-monsters)
     - [Enchantment value examples](#enchantment-value-examples)
 
 
@@ -625,6 +626,7 @@ Identifier                  | Description
 `hit_me_effect`             | A spell that activates when you are hit by a creature.  The spell is centered on your location.  Follows the template for defining `fake_spell`
 `intermittent_activation`   | Spells that activate centered on you depending on the duration.  The spells follow the `fake_spell` template.
 `values`                    | Numbers that can be modified (see [list](#id-values)).  `add` is added to the base value, `multiply` is **also added** and treated as percentage: 2.5 is +250% and -1 is -100%.  `add` is always applied before `multiply`.  Either `add` or `multiply` can be a variable_object/math expression (see [below](#variables) for syntax and application, and [NPCs](NPCs.md) for the in depth explanation).
+`skills`                    | A bonus or penalty to skills. Syntax is the same as for values, using the id of the skill name.
 `emitter`                   | Grants the emit_id.
 `modified_bodyparts`        | Modifies the body plan (standard is human).  `gain` adds body_part_id, `lose` removes body_part_id.  Note: changes done this way stay even after the item/effect/mutation carrying the enchantment is removed.
 `mutations`                 | Grants the mutation/trait ID.  Note: enchantments effects added this way won't stack, due how mutations work.
@@ -642,6 +644,7 @@ There are two possible syntaxes.  The first is by defining an enchantment object
     "hit_you_effect": [ { "id": "AEA_FIREBALL", "hit_self": true, "once_in": 12 } ],
     "hit_me_effect": [ { "id": "AEA_HEAL" } ],
     "values": [ { "value": "STRENGTH", "multiply": 1.1, "add": -5 } ],
+    "skills": [ { "value": "computer", "add": 3 } ],
     "emitter": "emit_AEP_SMOKE",
     "modified_bodyparts": [ { "gain": "test_corvid_beak" }, { "lose": "torso" } ],
     "mutations": [ "GILLS", "MEMBRANE", "AMPHIBIAN", "WAYFARER", "WILDSHAPE:FISH" ],
@@ -853,6 +856,7 @@ Character status value  | Description
 `SOCIAL_INTIMIDATE`     | Affects your ability to intimidate.
 `SOCIAL_LIE`            | Affects your ability to lie.
 `SOCIAL_PERSUADE`       | Affects your ability to persuade.
+`SPEED`                 | Affects your base speed.
 `RANGE`                 | Modifies your characters range with firearms
 `READING_EXP`           | Changes the minimum you learn from each reading increment.
 `RECOIL_MODIFIER`       | Affects recoil when shooting a gun.  Positive value increase the dispersion, negative decrease one.
@@ -861,6 +865,18 @@ Character status value  | Description
 `REGEN_STAMINA`         | 
 `THIRST`                | 
 `WEAPON_DISPERSION`     | Positive value increase the dispersion, negative decrease one.
+`OVERMAP_SIGHT`         | Increases the amount of overmap tiles you can see around.
+`STEALTH_MODIFIER`      | Same as mutation `stealth_modifier` value, amount to be subtracted from player's visibility range, capped to 60.  Negative values work, but are not very effective due to the way vision ranges are capped.
+`MENDING_MODIFIER`      | Changes the speed of your limb mend. Since it's a percent, using `multiply` is recommended.
+`KCAL`                  | Same as bio_digestion effect, increases the amount of calories obrained from the food.
+`VITAMIN_ABSORB_MOD`    | Increases amount of vitamins obtained from the food
+`READING_SPEED_MULTIPLIER`  | Changes how fast you can read books; Lesser value means faster book reading, with cap of 1 second.
+`MELEE_STAMINA_CONSUMPTION` | Changes amount of stamina used when swing in melee; stamina consumption is a negative value, so `"add": 100` decreases amount of stamina consumed, when `"add": -100` increases it; `"multiply": 1` increases, `"multiply": -0.5` decreases it. Can't be bigger than -50.
+`OBTAIN_COST_MULTIPLIER`    | same as `obtain_cost_multiplier`, modifier for pulling an item from a container and storing it back, as a handling penalty. `"add": 100` add 100 additional moves to item wield (1 second)
+`STOMACH_SIZE_MULTIPLIER`   | Same as mutation `stomach_size_multiplier` field, changes how much food you can consume at once. `"add": 1000` adds 1 L to stomach size
+`CASTING_TIME_MULTIPLIER`   | Same as mutation `casting_time_multiplier` field, changes your casting speed. Since it's a percent, using `multiply` is recommended. `"multiply": 2"` triples the casting speed 
+`CRAFTING_SPEED_MULTIPLIER` | Same as mutation `crafting_speed_multiplier` field, changes your crafting speed. Since it's a percent, using `multiply` is recommended.
+`BIONIC_MANA_PENALTY`       | same as mutation `bionic_mana_penalty` field, changes how big the mana penalty for having bionic energy is (default ratio is 1 kj removes 1 mana point). better to use with `multiply`, using `add` just adds or removes flat amount of mana no matter of energy level. `"multiply": 1` double the ratio (1 kj removes 2 mana points), `"multiply": -0.5` halves it
 
 
 Melee-only enchantment values | Description
@@ -890,6 +906,22 @@ Enchanted item value | Description
 `ITEM_ARMOR_STAB`    | 
 `ITEM_ATTACK_SPEED`  | 
 
+### Enchantments on monsters
+A small subset of enchantments can be applied to monsters via effects. These are listed below:
+
+Character status value  | Description
+---                     |---
+`ARMOR_ACID`            | Negative values give armor against the damage, positive values make the monster accept more damage of this type.
+`ARMOR_BASH`            | 
+`ARMOR_BIO`             | 
+`ARMOR_BULLET`          | 
+`ARMOR_COLD`            | 
+`ARMOR_CUT`             | 
+`ARMOR_ELEC`            | 
+`ARMOR_HEAT`            | 
+`ARMOR_STAB`            | 
+`REGEN_HP`              | Affects the rate the monster recovers hp.
+`SPEED`                 | Affects the base speed of the monster.
 
 ### Enchantment value examples
 
