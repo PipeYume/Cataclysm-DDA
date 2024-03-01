@@ -282,13 +282,16 @@ std::string input_context::get_desc( const std::string &action_descriptor,
             category, &is_local );
 
     if( events.empty() ) {
-        return is_local ? _( "Unbound locally!" ) : _( "Unbound globally!" );
+        if( is_local ) {
+            bool global_empty = inp_mngr.get_input_for_action( action_descriptor ).empty();
+            return global_empty ? _( "Unbound locally!" ) : _( "Unbound locally!  Underlying global." );
+        } else {
+            return _( "Unbound globally!" );
+        }
     }
 
     std::vector<input_event> inputs_to_show;
-    for( const input_event &events_i : events ) {
-        const input_event &event = events_i;
-
+    for( const input_event &event : events ) {
         if( is_event_type_enabled( event.type ) && evt_filter( event ) ) {
             inputs_to_show.push_back( event );
         }
@@ -723,8 +726,10 @@ void keybindings_ui::draw_controls()
             }
             key_text += string_format( "%s:", ctxt->get_action_name( action_id ) );
             bool is_selected = false;
-            draw_colored_text( key_text, col, 0.0f, &is_selected );
-            if( ( is_selected || ImGui::IsItemHovered() ) && invlet != ' ' ) {
+            bool is_hovered = false;
+            draw_colored_text( key_text, col, 0.0f, status == kb_menu_status::show ? nullptr : &is_selected,
+                               nullptr, &is_hovered );
+            if( ( is_selected || is_hovered ) && invlet != ' ' ) {
                 highlight_row_index = i;
             }
             //ImGui::SameLine();
@@ -1280,15 +1285,16 @@ action_id input_context::display_menu_imgui( const bool permit_execute_action )
             kb_menu.hotkeys = ctxt.get_available_single_char_hotkeys( display_help_hotkeys );
         } else if( !kb_menu.filtered_registered_actions.empty() &&
                    kb_menu.status != kb_menu_status::show ) {
-            size_t hotkey_index = kb_menu.hotkeys.find_first_of( raw_input_char );
-            if( hotkey_index == std::string::npos ) {
-                if( action == "SELECT" && kb_menu.highlight_row_index != -1 ) {
-                    hotkey_index = size_t( kb_menu.highlight_row_index );
-                } else {
+            size_t action_index = SIZE_MAX;
+            if( action == "SELECT" && kb_menu.highlight_row_index != -1 ) {
+                action_index = kb_menu.highlight_row_index;
+            } else {
+                size_t hotkey_index = kb_menu.hotkeys.find_first_of( raw_input_char );
+                if( hotkey_index == std::string::npos ) {
                     continue;
                 }
+                action_index = hotkey_index + kb_menu.scroll_offset;
             }
-            const size_t action_index = hotkey_index + kb_menu.scroll_offset;
             if( action_index >= kb_menu.filtered_registered_actions.size() ) {
                 continue;
             }
@@ -1470,7 +1476,8 @@ std::string input_context::get_action_name( const std::string &action_id ) const
     }
 
     // 2) Check if the hotkey has a name
-    const action_attributes &attributes = inp_mngr.get_action_attributes( action_id, category );
+    const action_attributes &attributes = inp_mngr.get_action_attributes( action_id, category, nullptr,
+                                          true );
     if( !attributes.name.empty() ) {
         return attributes.name.translated();
     }
@@ -1479,7 +1486,7 @@ std::string input_context::get_action_name( const std::string &action_id ) const
     // this context that is masking the global hotkey. Fallback to the global
     // hotkey's name.
     const action_attributes &default_attributes = inp_mngr.get_action_attributes( action_id,
-            default_context_id );
+            default_context_id, nullptr, true );
     if( !default_attributes.name.empty() ) {
         return default_attributes.name.translated();
     }
